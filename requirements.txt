@@ -1,0 +1,3 @@
+# [ALL] List of Python dependencies (FastAPI, SQLite3, etc.)
+fastapi
+uvicorn
