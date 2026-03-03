@@ -6,6 +6,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
 from backend.langGraph.constants import INTENT_KEYWORDS, SUPPORTED_INTENTS
+from backend.langGraph.graph_state import HealthGraphState
+from backend.langGraph.langgraph_node import SESSION_MEMORY
+from backend.langGraph.langgraph_pipeline import GRAPH
 from backend.langGraph.llm_provider import get_groq_client
 
 def _get_llm() -> ChatGroq:
@@ -232,3 +235,32 @@ def build_chart_data(chart_type: str, rows: List[Dict[str, Any]]) -> Dict[str, A
         }
 
     return {}
+
+def reset_session_context(session_id: str) -> Dict[str, Any]:
+    SESSION_MEMORY.pop(session_id, None)
+    return {
+        "status": "success",
+        "session_id": session_id,
+        "message": "Session context has been reset.",
+    }
+
+def run_health_langgraph_query(user_query: str, session_id: str = "default") -> Dict[str, Any]:
+    initial_state: HealthGraphState = {
+        "session_id": session_id,
+        "user_query": user_query,
+        "clean_query": "",
+        "intent": "",
+        "entities": {},
+        "sql": "",
+        "sql_params": [],
+        "query_result": [],
+        "columns": [],
+        "chart_type": "table",
+        "chart_data": {},
+        "error": "",
+        "clarification_needed": False,
+        "memory_context": {},
+        "response_payload": {},
+    }
+    final_state = GRAPH.invoke(initial_state)
+    return final_state.get("response_payload", {})

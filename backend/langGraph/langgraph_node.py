@@ -335,12 +335,3 @@ def node_response_formatter(state: HealthGraphState) -> HealthGraphState:
 
     return {"response_payload": payload}
 
-
-
-def reset_session_context(session_id: str) -> Dict[str, Any]:
-    SESSION_MEMORY.pop(session_id, None)
-    return {
-        "status": "success",
-        "session_id": session_id,
-        "message": "Session context has been reset.",
-    }
