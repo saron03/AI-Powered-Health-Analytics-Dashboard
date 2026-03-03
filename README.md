@@ -46,6 +46,11 @@ python3 data/seed_data.py
 ### 4. Running the Backend API (FR-2, FR-17)
 The backend is built with **FastAPI**. It handles database connections and SQL execution.
 
+Create a `.env` file in the project root with your Groq API key:
+```bash
+GROQ_API_KEY=your_groq_api_key
+```
+
 Start the server:
 ```bash
 uvicorn backend.main:app --reload
@@ -60,6 +65,10 @@ Once the server is running, visit **[http://127.0.0.1:8000/docs](http://127.0.0.
 -   `GET /health`: Verifies database connection.
 -   `POST /api/query`: Executes a secure `SELECT` SQL query against the health database.
     -   **Payload**: `{"query": "SELECT * FROM disease_statistics LIMIT 5"}`
+-   `POST /api/langgraph/query`: Runs the full LangGraph NLP-to-SQL pipeline using Groq with session memory.
+    -   **Payload**: `{"user_query": "Show malaria cases in Oromia in 2022", "session_id": "demo-user-1"}`
+-   `POST /api/langgraph/reset`: Clears memory context for a session.
+    -   **Payload**: `{"session_id": "demo-user-1"}`
 
 ---
 
