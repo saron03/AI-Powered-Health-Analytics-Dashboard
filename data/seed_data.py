@@ -8,7 +8,10 @@ import os
 fake = Faker()
 
 # Define constants
-DB_PATH = 'data/health_data.db'
+# Use an absolute path derived from this file's location so the script works
+# regardless of which directory it is invoked from (consistent with backend/database.py)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, 'data', 'health_data.db')
 NUM_RECORDS = 10000
 
 # Ethiopian Regions for realism based on the project context
@@ -160,18 +163,22 @@ def generate_data(cursor):
         ''', (region, year, num_hospitals, available_beds, doctors, nurses))
 
     # 4. Populate vaccination_records
+    # Build a cache of {(region, year): total_population} from the already-inserted
+    # population_stats rows. This avoids 2,500 individual SELECT queries inside the loop.
+    cursor.execute('SELECT region, year, total_population FROM population_stats')
+    population_cache = {
+        (row[0], row[1]): row[2] for row in cursor.fetchall()
+    }
+
     for _ in range(NUM_RECORDS // 4):
         vaccine = random.choice(VACCINES)
         region = random.choice(REGIONS)
         year = random.choice(years)
         
-        # Fetch the previously generated population for this region/year
-        # This ensures the vaccinated population realistically never exceeds the actual population
-        cursor.execute('SELECT total_population FROM population_stats WHERE region = ? AND year = ? LIMIT 1', (region, year))
-        result = cursor.fetchone()
+        # Look up population from the cache instead of hitting the DB each iteration
+        pop = population_cache.get((region, year))
         
-        if result:
-            pop = result[0]
+        if pop is not None:
             vaccinated = random.randint(0, pop)
             coverage = round((vaccinated / pop) * 100, 2)
         else:
@@ -204,15 +211,42 @@ def main():
     # Step A: Instantiate the schema
     create_tables(cursor)
     
-    # Step B: Check if data already exists to avoid duplicate seeding
-    cursor.execute("SELECT COUNT(*) FROM population_stats")
-    if cursor.fetchone()[0] == 0:
-        # Table is empty, proceed with heavy generation
+    # Step B: Check ALL 4 tables to detect a partial/interrupted seed run.
+    # Only checking one table could leave the DB in an inconsistent state if a
+    # previous run was interrupted after populating some tables but not others.
+    tables_to_check = [
+        "population_stats",
+        "disease_statistics",
+        "hospital_resources",
+        "vaccination_records"
+    ]
+    
+    counts = {}
+    for table in tables_to_check:
+        cursor.execute(f"SELECT COUNT(*) FROM {table}")
+        counts[table] = cursor.fetchone()[0]
+    
+    all_populated = all(count > 0 for count in counts.values())
+    any_populated = any(count > 0 for count in counts.values())
+    
+    if all_populated:
+        # All 4 tables have data — safe to skip
+        print("Database already contains data in all tables. Skipping generation.")
+        for table, count in counts.items():
+            print(f"  - {table}: {count} records")
+    else:
+        if any_populated:
+            # Partial seed detected — warn and re-seed to fix inconsistency
+            print("WARNING: Partial seed detected. Some tables are empty. Re-seeding all tables...")
+            for table, count in counts.items():
+                status = f"{count} records" if count > 0 else "EMPTY"
+                print(f"  - {table}: {status}")
+        else:
+            print("Database is empty. Seeding all tables...")
+
         generate_data(cursor)
         conn.commit()  # Save the insertions to disk
         print("Data seeded successfully!")
-    else:
-        print("Database already contains data. Skipping generation.")
 
     # Always properly close the connection to avoid DB locks
     conn.close()
