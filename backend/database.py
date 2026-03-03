@@ -4,6 +4,8 @@ import os
 import logging
 from typing import Dict, Any
 
+from backend.langGraph.constants import ALLOWED_TABLES
+
 # Use a module-level logger only. Logging is configured at the app entrypoint (main.py)
 # to avoid overriding the global root logger configuration at import time.
 logger = logging.getLogger(__name__)
