@@ -1,3 +1,5 @@
+from typing import Any, Dict
+
 SUPPORTED_INTENTS = {"trend", "comparison", "aggregation", "ranking", "proportion", "raw_data", "clarification"}
 INTENT_MIN_CONFIDENCE = 0.6
 INTENT_KEYWORDS = {
@@ -26,3 +28,5 @@ ALLOWED_TABLES = {
     "hospital_resources",
     "vaccination_records",
 }
+
+SESSION_MEMORY: Dict[str, Dict[str, Any]] = {}

@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from backend.langGraph.constants import ALLOWED_TABLES, INTENT_MIN_CONFIDENCE, SUPPORTED_INTENTS
+from backend.langGraph.constants import ALLOWED_TABLES, INTENT_MIN_CONFIDENCE, SESSION_MEMORY, SUPPORTED_INTENTS
 from backend.langGraph.graph_state import HealthGraphState
 from backend.langGraph.helper import (build_chart_data, 
                                       build_schema_prompt, 
@@ -17,8 +17,6 @@ from backend.langGraph.helper import (build_chart_data,
 from ..database import execute_sql_query
 
 load_dotenv()
-
-SESSION_MEMORY: Dict[str, Dict[str, Any]] = {}
 
 
 def node_query_cleaner(state: HealthGraphState) -> HealthGraphState:

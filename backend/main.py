@@ -3,11 +3,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
-from backend.langGraph.langgraph_pipeline import run_health_langgraph_query
+from backend.langGraph.service import run_health_langgraph_query
 from backend.langGraph.llm_provider import init_groq_client
 
 from .database import execute_sql_query
-from .langGraph.langgraph_node import reset_session_context
+from .langGraph.helper import reset_session_context
 from backend.schema import LangGraphQueryRequest, ResetContextRequest, SQLQueryRequest
 
 # Configure logging once here at the app entrypoint.
