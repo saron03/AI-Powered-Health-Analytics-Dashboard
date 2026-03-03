@@ -1,10 +1,13 @@
 # [SARON] Entry point for FastAPI/Flask; connects the whole system
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import List, Any
-import os
 import logging
+
+from backend.langGraph.langgraph_pipeline import run_health_langgraph_query
+
+from .database import execute_sql_query
+from .langGraph.langgraph_node import reset_session_context
+from backend.schema import LangGraphQueryRequest, ResetContextRequest, SQLQueryRequest
 
 # Configure logging once here at the app entrypoint.
 # All modules (e.g. database.py) use logging.getLogger(__name__) and will inherit this.
@@ -13,9 +16,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 
-# Relative import works because backend/ is a proper package (has __init__.py).
-# Run from the repo root with: uvicorn backend.main:app --reload
-from .database import execute_sql_query
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -33,12 +33,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Request schema for executing SQL queries.
-# params uses Field(default_factory=list) to avoid mutable default issues.
-# It is non-optional so clients must always send a list (even if empty).
-class SQLQueryRequest(BaseModel):
-    query: str
-    params: List[Any] = Field(default_factory=list)
 
 @app.get("/")
 def read_root():
@@ -103,6 +97,37 @@ def run_query(request: SQLQueryRequest):
         raise HTTPException(status_code=status_code, detail=error_message)
         
     return result
+
+
+@app.post("/api/langgraph/query")
+def run_langgraph_query(request: LangGraphQueryRequest):
+    """
+    Runs the Groq-powered LangGraph pipeline for natural language health analytics.
+    """
+    user_query = request.user_query.strip()
+    if not user_query:
+        raise HTTPException(status_code=400, detail="user_query is required.")
+
+    try:
+        result = run_health_langgraph_query(
+            user_query=user_query,
+            session_id=request.session_id.strip() or "default",
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.getLogger(__name__).exception("LangGraph pipeline failed")
+        raise HTTPException(status_code=500, detail=f"LangGraph pipeline error: {str(e)}")
+
+
+@app.post("/api/langgraph/reset")
+def reset_langgraph_context(request: ResetContextRequest):
+    """
+    Resets session memory for follow-up context.
+    """
+    session_id = request.session_id.strip() or "default"
+    return reset_session_context(session_id)
 
 if __name__ == "__main__":
     import uvicorn
