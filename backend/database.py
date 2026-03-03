@@ -2,7 +2,7 @@
 import sqlite3
 import os
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 
 # Use a module-level logger only. Logging is configured at the app entrypoint (main.py)
 # to avoid overriding the global root logger configuration at import time.
@@ -12,14 +12,6 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, 'data', 'health_data.db')
 
-# Server-side safety constants for the public query endpoint
-# Only these 4 tables may be referenced in user-facing queries (FR-4)
-ALLOWED_TABLES = {
-    "population_stats",
-    "disease_statistics",
-    "hospital_resources",
-    "vaccination_records",
-}
 # Maximum number of rows returned per query to prevent heavy accidental scans
 MAX_QUERY_ROWS = 1000
 

@@ -1,23 +1,15 @@
 import json
 import re
-import os
 from typing import Any, Dict, List
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
 from backend.langGraph.constants import INTENT_KEYWORDS, SUPPORTED_INTENTS
+from backend.langGraph.llm_provider import get_groq_client
 
 def _get_llm() -> ChatGroq:
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY is missing. Add it to .env before running LangGraph queries.")
-
-    return ChatGroq(
-        model="llama-3.3-70b-versatile",
-        groq_api_key=api_key,
-        temperature=0,
-    )
+    return get_groq_client()
 
 
 def _extract_json(text: str) -> Dict[str, Any]:

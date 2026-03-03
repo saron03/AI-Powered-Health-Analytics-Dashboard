@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 from backend.langGraph.langgraph_pipeline import run_health_langgraph_query
+from backend.langGraph.llm_provider import init_groq_client
 
 from .database import execute_sql_query
 from .langGraph.langgraph_node import reset_session_context
@@ -32,6 +33,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def startup_initialize_dependencies():
+    init_groq_client()
 
 
 @app.get("/")
