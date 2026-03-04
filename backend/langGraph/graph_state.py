@@ -4,6 +4,7 @@ class HealthGraphState(TypedDict, total=False):
     session_id: str
     user_query: str
     clean_query: str
+    title: str
     intent: str
     entities: Dict[str, Any]
     sql: str
@@ -12,6 +13,7 @@ class HealthGraphState(TypedDict, total=False):
     columns: List[str]
     chart_type: str
     chart_data: Dict[str, Any]
+    explanation: str
     error: str
     clarification_needed: bool
     memory_context: Dict[str, Any]

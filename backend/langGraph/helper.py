@@ -80,10 +80,10 @@ def rule_based_intent_detector(query: str) -> Dict[str, Any]:
 
 def llm_intent_detector(query: str) -> str:
     system_prompt = (
-        "You are an intent classifier for health analytics questions. "
-        "Choose exactly one label from: trend, comparison, aggregation, ranking, proportion, raw_data, clarification. "
-        "Use clarification when the request is too vague to safely generate a query. "
-        "Return strict JSON only: {\"intent\": \"one_label\"}."
+        "You classify intents for the AI-Powered Health Analytics Dashboard. "
+        "Choose exactly one label from: trend (over time), comparison (across regions/diseases/time slices), aggregation (single number summary), ranking (top/bottom ordering), proportion (share/percentage), raw_data (explicit table/raw rows), clarification (insufficient detail). "
+        "Use clarification when disease/region/time range is missing, the metric is unclear, the user relies on unstated context (e.g., 'same as before'), or the request is too vague to safely generate SQL. "
+        "Output strict JSON only: {\"intent\": \"one_label\"}."
     )
     parsed = llm_json(system_prompt, query)
     intent = str(parsed.get("intent", "clarification")).strip().lower()
@@ -95,37 +95,35 @@ def llm_intent_detector(query: str) -> str:
 
 def build_schema_prompt() -> str:
     return (
-        "Schema:\n"
+        "AI-Powered Health Analytics Dashboard SQL generator.\n\n"
+        "Schema (4 tables):\n"
         "population_stats(population_id, region, year, total_population, male_population, female_population)\n"
         "disease_statistics(disease_id, disease_name, region, year, total_cases, total_deaths, recovery_rate)\n"
         "hospital_resources(hospital_id, region, year, number_of_hospitals, available_beds, doctors_count, nurses_count)\n"
         "vaccination_records(vaccine_id, vaccine_name, region, year, vaccinated_population, coverage_percentage)\n\n"
 
-        "Output format (STRICT):\n"
-        "Return ONLY valid JSON with exactly these keys:\n"
+        "Capabilities and filters: support region, year or year range, disease_name, and gender via male_population/female_population. Age groups are not available; if requested, ask for clarification.\n"
+        "Use memory/context provided elsewhere only if explicitly given; otherwise do not assume prior filters.\n\n"
+
+        "Output format (STRICT): return ONLY valid JSON with exactly these keys:\n"
         "{\"sql\": \"...\", \"params\": [], \"needs_clarification\": false, \"clarification_question\": \"\"}\n\n"
 
-        "CRITICAL RULES:\n"
+        "Query construction rules:\n"
         "1) SQL must be a single read-only SELECT query.\n"
         "2) Use '?' placeholders for EVERY user-provided value.\n"
-        "3) The number of '?' in SQL MUST EXACTLY match the length of params.\n"
-        "4) params MUST NEVER be empty if SQL contains '?'.\n"
-        "5) Extract parameter values directly from the user query (e.g., disease, region, year).\n"
-        "6) Preserve correct order of params as they appear in SQL.\n"
-        "7) Apply LOWER(column) = LOWER(?) for text filters.\n"
-        "8) Use LOWER(region) for region comparisons.\n"
-        "9) Do NOT hardcode user values inside SQL.\n"
-        "10) Do not invent columns, tables, or values.\n"
-        "11) If multiple rows can exist for the same region/year/disease and the user asks for a metric like total_cases or total_deaths, you MUST aggregate using SUM().\n\n"
+        "3) The number of '?' in SQL MUST EXACTLY match len(params).\n"
+        "4) params MUST NOT be empty when SQL contains '?'.\n"
+        "5) Extract parameter values from the user query only; never hardcode them.\n"
+        "6) Preserve the order of params exactly as the placeholders appear.\n"
+        "7) Apply LOWER(column) = LOWER(?) for text filters; use LOWER(region) for region comparisons.\n"
+        "8) Do NOT invent columns, tables, or values.\n"
+        "9) When multiple rows can exist for the same region/year/disease and the user requests totals (e.g., total_cases, total_deaths), aggregate with SUM() and GROUP BY as needed.\n"
+        "10) Use GROUP BY for comparisons, ORDER BY + LIMIT for ranking, and avoid SELECT * unless necessary.\n\n"
 
-        "Behavior rules:\n"
-        "- Use aggregation (SUM, AVG, etc.) only when needed.\n"
-        "- Use GROUP BY for comparisons.\n"
-        "- Use ORDER BY + LIMIT for ranking.\n"
-        "- Avoid SELECT * unless necessary.\n\n"
-
-        "Clarification:\n"
-        "- If required info is missing, set needs_clarification=true and leave sql empty.\n\n"
+        "Clarification policy:\n"
+        "- If disease/region/year (or time range) is missing for a specific metric, set needs_clarification=true, sql="", params=[].\n"
+        "- If the user asks for age groups or genders beyond male/female, set needs_clarification=true and ask a concise question.\n"
+        "- Provide a short clarification_question that requests only the missing detail.\n\n"
 
         "Example:\n"
         "User: Compare cholera deaths in Amhara vs Tigray in 2022\n"
@@ -135,7 +133,7 @@ def build_schema_prompt() -> str:
         "  \"params\": [\"cholera\", \"Amhara\", \"Tigray\", 2022],\n"
         "  \"needs_clarification\": false,\n"
         "  \"clarification_question\": \"\"\n"
-        "}"
+        "}\n"
     )
 
 

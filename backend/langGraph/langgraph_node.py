@@ -1,7 +1,5 @@
 import json
 import re
-import uuid
-from typing import Any, Dict
 
 from dotenv import load_dotenv
 
@@ -26,16 +24,18 @@ def node_query_cleaner(state: HealthGraphState) -> HealthGraphState:
 
     system_prompt = (
         "You are a query normalizer for a health analytics system. "
-        "Task: rewrite the user question into a concise, grammatically clear version without changing meaning. "
+        "Task 1: rewrite the user question into a concise, grammatically clear version without changing meaning. "
+        "Task 2: generate a short, descriptive title for this query. "
         "Do not add assumptions, filters, regions, diseases, years, or metrics that are not explicitly present. "
         "Preserve all numbers, year ranges, and named entities exactly. "
-        "Return strict JSON only with one key: {\"clean_query\": \"...\"}."
+        "Return strict JSON only with one key: {\"clean_query\": \"...\", \"title\": \"...\"}."
     )
     parsed = llm_json(system_prompt, user_query)
     clean_query = parsed.get("clean_query") if isinstance(parsed, dict) else None
+    title = parsed.get("title") if isinstance(parsed, dict) else None
     if not clean_query:
         clean_query = re.sub(r"\s+", " ", user_query).strip()
-    return {"clean_query": clean_query}
+    return {"clean_query": clean_query, "title": title}
 
 
 def node_intent_detector(state: HealthGraphState) -> HealthGraphState:
@@ -281,6 +281,35 @@ def node_db_api_caller(state: HealthGraphState) -> HealthGraphState:
         "columns": result.get("columns", []),
     }
 
+def node_explanation_generator(state: HealthGraphState) -> HealthGraphState:
+    if state.get("error"):
+        return {"explanation": ""}
+
+    sql = state.get("sql", "")
+    clean_query = state.get("clean_query", "")
+    intent = state.get("intent", "clarification")
+    entities = state.get("entities", {})
+    rows = state.get("query_result", [])
+
+    system_prompt = (
+        "You are the SQL explanation module for the AI-Powered Health Analytics Dashboard. "
+        "Use ONLY the provided intent, entities, SQL, and query results—do not invent values or rely on external knowledge. "
+        "Explain in plain language how the SQL addresses the user question, including key filters (disease, region, year/range) and the metric/aggregation used. "
+        "Summarize the result set succinctly; if no rows are returned, say that no data was found. "
+        "Output strict JSON: {\"explanation\": \"...\"} with no extra keys or formatting."
+    )
+    user_prompt = (
+        f"User query: {clean_query}\n"
+        f"Intent: {intent}\n"
+        f"Entities: {json.dumps(entities)}\n"
+        f"Generated SQL: {sql}\n"
+        f"Query Results: {json.dumps(rows)}"
+    )
+    explanation = llm_json(system_prompt, user_prompt)
+    if isinstance(explanation, dict):
+        return {"explanation": explanation.get("explanation", "")}
+    return {"explanation": str(explanation)}
+
 
 def node_chart_determinator(state: HealthGraphState) -> HealthGraphState:
     if state.get("error"):
@@ -308,11 +337,8 @@ def node_response_formatter(state: HealthGraphState) -> HealthGraphState:
 
     payload = {
         "session_id": session_id,
-        "request_id": str(uuid.uuid4()),
-        "user_query": state.get("user_query", ""),
-        "clean_query": state.get("clean_query", ""),
-        "intent": state.get("intent", ""),
-        "entities": state.get("entities", {}),
+        "title": state.get("title"),
+        "explanation": state.get("explanation", ""),
         "sql": state.get("sql", ""),
         "table": {
             "columns": state.get("columns", []),
@@ -324,11 +350,6 @@ def node_response_formatter(state: HealthGraphState) -> HealthGraphState:
         },
         "clarification_needed": bool(state.get("clarification_needed", False)),
         "error": state.get("error", ""),
-        "memory_context": {
-            "query_history": memory.get("query_history", []),
-            "last_entities": memory.get("last_entities", {}),
-            "last_chart_type": memory.get("last_chart_type"),
-        },
     }
 
     return {"response_payload": payload}
