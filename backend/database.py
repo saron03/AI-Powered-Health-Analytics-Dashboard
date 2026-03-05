@@ -2,7 +2,7 @@
 import sqlite3
 import os
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Set
 
 from backend.langGraph.constants import ALLOWED_TABLES
 
@@ -42,6 +42,24 @@ def get_db_connection(readonly: bool = False):
     conn.row_factory = sqlite3.Row  # Allows accessing results like dicts (row['column'])
     return conn
 
+
+def get_dynamic_allowed_tables() -> Set[str]:
+    conn = None
+    try:
+        conn = get_db_connection(readonly=True)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        )
+        tables = {str(row[0]).lower() for row in cursor.fetchall() if row and row[0]}
+        return tables if tables else {table.lower() for table in ALLOWED_TABLES}
+    except Exception:
+        return {table.lower() for table in ALLOWED_TABLES}
+    finally:
+        if conn:
+            conn.close()
+
+
 def _validate_query_tables(query: str):
     """
     Checks that every table referenced in the query is in the ALLOWED_TABLES set.
@@ -51,10 +69,11 @@ def _validate_query_tables(query: str):
     import re
     # Extract all word tokens that follow FROM or JOIN (case-insensitive)
     referenced = re.findall(r'(?:FROM|JOIN)\s+(\w+)', query, re.IGNORECASE)
+    allowed_tables = get_dynamic_allowed_tables()
     for table in referenced:
-        if table.lower() not in {t.lower() for t in ALLOWED_TABLES}:
+        if table.lower() not in allowed_tables:
             raise ValueError(
-                f"Table '{table}' is not in the allowed table list: {sorted(ALLOWED_TABLES)}"
+                f"Table '{table}' is not in the allowed table list: {sorted(allowed_tables)}"
             )
 
 def execute_sql_query(query: str, params: tuple = (), readonly: bool = False) -> Dict[str, Any]:

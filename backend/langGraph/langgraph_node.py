@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Tuple
 
 from dotenv import load_dotenv
 
-from backend.langGraph.constants import ALLOWED_TABLES, INTENT_MIN_CONFIDENCE, SESSION_MEMORY, SUPPORTED_INTENTS
+from backend.langGraph.constants import INTENT_MIN_CONFIDENCE, SESSION_MEMORY, SUPPORTED_INTENTS
 from backend.langGraph.graph_state import HealthGraphState
 from backend.langGraph.llm_adapter import safe_llm_json
 from backend.langGraph.pipeline_config import DEFAULT_CONFIDENCE, DEFAULT_MAX_SQL_RETRIES, DEFAULT_MESSAGES
@@ -15,7 +15,7 @@ from backend.langGraph.helper import (build_chart_data,
                                       llm_intent_detector, 
                                       rule_based_intent_detector)
 
-from ..database import execute_sql_query
+from ..database import execute_sql_query, get_dynamic_allowed_tables
 
 load_dotenv()
 
@@ -302,7 +302,7 @@ def node_sql_generator(state: HealthGraphState) -> HealthGraphState:
     intent = str(state.get("intent", "clarification") or "clarification")
     entities = _as_dict(state.get("entities"))
     memory_context = _as_dict(state.get("memory_context"))
-    retry_count = int(state.get("sql_retry_count", 0) or 0)
+    # retry_count = int(state.get("sql_retry_count", 0) or 0)
     reflection_feedback = str(state.get("sql_reflection_feedback", "") or "")
 
     if intent == "clarification":
@@ -324,7 +324,7 @@ def node_sql_generator(state: HealthGraphState) -> HealthGraphState:
         f"Intent: {intent}\n"
         f"Entities: {json.dumps(entities)}\n"
         f"Memory context: {json.dumps(memory_context)}\n"
-        f"SQL retry count: {retry_count}\n"
+        # f"SQL retry count: {retry_count}\n"
         f"Reflection feedback: {reflection_feedback}"
     )
     parsed = safe_llm_json(
@@ -363,7 +363,7 @@ def node_sql_generator(state: HealthGraphState) -> HealthGraphState:
     return {
         "sql": sql,
         "sql_params": params,
-        "sql_retry_count": retry_count,
+        # "sql_retry_count": retry_count,
         "retry_sql_generation": False,
         **_update_confidence(state, "sql_generator", DEFAULT_CONFIDENCE["sql_generator_success"]),
     }
@@ -443,9 +443,10 @@ def node_sql_validator(state: HealthGraphState) -> HealthGraphState:
     if any(token in lowered for token in blocked):
         return _with_error(state, DEFAULT_MESSAGES["unsafe_sql"], clarification_needed=True)
 
+    dynamic_allowed_tables = get_dynamic_allowed_tables()
     referenced = re.findall(r"(?:from|join)\s+(\w+)", lowered, flags=re.IGNORECASE)
     for table_name in referenced:
-        if table_name not in {t.lower() for t in ALLOWED_TABLES}:
+        if table_name not in dynamic_allowed_tables:
             return _with_error(state, f"Disallowed table referenced: {table_name}.", clarification_needed=True)
 
     semantic_error = validate_sql_semantics(sql)
@@ -534,12 +535,36 @@ def node_explanation_generator(state: HealthGraphState) -> HealthGraphState:
         }
 
     system_prompt = (
-        "You are the SQL explanation module for the AI-Powered Health Analytics Dashboard. "
-        "Use ONLY the provided intent, entities, SQL, and query results—do not invent values or rely on external knowledge. "
-        "Explain in plain language how the SQL addresses the user question, including key filters (disease, region, year/range) and the metric/aggregation used. "
-        "Summarize the result set succinctly; if no rows are returned, say that no data was found. "
-        "Output strict JSON: {\"explanation\": \"...\"} with no extra keys or formatting."
-    )
+                    "You are an AI Health Data Analyst explaining analytics results to non-technical users "
+                    "such as public health officers, hospital administrators, and policy makers.\n\n"
+
+                    "Your goal is to convert database query results into clear, useful insights written in "
+                    "simple natural language.\n\n"
+
+                    "IMPORTANT RULES:\n"
+                    "1. Do NOT explain SQL, databases, or technical implementation.\n"
+                    "2. Focus only on the meaning of the results.\n"
+                    "3. Use clear and simple language suitable for non-technical users.\n"
+                    "4. Mention important numbers, regions, diseases, or years when relevant.\n"
+                    "5. Use ONLY the provided data. Do NOT invent values.\n"
+                    "6. Keep the explanation concise (2–4 sentences).\n"
+                    "7. If no data is returned, politely explain that no records were found.\n\n"
+
+                    "ADAPT THE EXPLANATION BASED ON QUERY INTENT:\n"
+                    "- ranking → highlight the highest or lowest values.\n"
+                    "- comparison → describe the differences between groups.\n"
+                    "- trend → describe increases or decreases over time.\n"
+                    "- aggregation → summarize totals or averages.\n"
+                    "- raw_data → briefly describe what the table represents.\n\n"
+
+                    "INSIGHT STRUCTURE:\n"
+                    "1. First sentence: directly answer the user's question.\n"
+                    "2. Second sentence: highlight the most important values or comparisons.\n"
+                    "3. Third sentence (optional): provide an additional insight or observation.\n\n"
+
+                    "Return STRICT JSON only:\n"
+                    "{\"explanation\": \"...\"}"
+                )
     user_prompt = (
         f"User query: {clean_query}\n"
         f"Intent: {intent}\n"

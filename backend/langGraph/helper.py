@@ -8,6 +8,44 @@ from langchain_groq import ChatGroq
 from backend.langGraph.constants import INTENT_KEYWORDS, SUPPORTED_INTENTS
 from backend.langGraph.constants import SESSION_MEMORY
 from backend.langGraph.llm_provider import get_groq_client
+from backend.database import get_db_connection
+
+FALLBACK_SCHEMA: Dict[str, List[str]] = {
+    "population_stats": [
+        "population_id",
+        "region",
+        "year",
+        "total_population",
+        "male_population",
+        "female_population",
+    ],
+    "disease_statistics": [
+        "disease_id",
+        "disease_name",
+        "region",
+        "year",
+        "total_cases",
+        "total_deaths",
+        "recovery_rate",
+    ],
+    "hospital_resources": [
+        "hospital_id",
+        "region",
+        "year",
+        "number_of_hospitals",
+        "available_beds",
+        "doctors_count",
+        "nurses_count",
+    ],
+    "vaccination_records": [
+        "vaccine_id",
+        "vaccine_name",
+        "region",
+        "year",
+        "vaccinated_population",
+        "coverage_percentage",
+    ],
+}
 
 def _get_llm() -> ChatGroq:
     return get_groq_client()
@@ -31,12 +69,16 @@ def _extract_json(text: str) -> Dict[str, Any]:
         return {}
 
 
-def llm_json(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+def llm_json(system_prompt: str, user_prompt: str, temperature: float = 0.0, top_p: float = 1.0) -> Dict[str, Any]:
     llm = _get_llm()
-    response = llm.invoke([
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=user_prompt),
-    ])
+    response = llm.invoke(
+        [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt),
+        ],
+        temperature=temperature,
+        top_p=top_p
+    )
     return _extract_json(response.content if isinstance(response.content, str) else "")
 
 def rule_based_intent_detector(query: str) -> Dict[str, Any]:
@@ -92,15 +134,56 @@ def llm_intent_detector(query: str) -> str:
     return intent
 
 
+def _fetch_dynamic_schema() -> Dict[str, List[str]]:
+    conn = None
+    try:
+        conn = get_db_connection(readonly=True)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        )
+        tables = [str(row[0]) for row in cursor.fetchall() if row and row[0]]
+
+        schema: Dict[str, List[str]] = {}
+        for table_name in tables:
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            columns = [str(col[1]) for col in cursor.fetchall() if len(col) > 1 and col[1]]
+            if columns:
+                schema[table_name] = columns
+        return schema
+    except Exception:
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
+def _is_valid_schema(schema: Dict[str, List[str]]) -> bool:
+    if not schema:
+        return False
+    for table_name, columns in schema.items():
+        if not table_name or not isinstance(columns, list) or not columns:
+            return False
+    return True
+
+
+def _format_schema_block(schema: Dict[str, List[str]]) -> str:
+    lines: List[str] = []
+    for table_name in sorted(schema.keys()):
+        column_text = ", ".join(schema[table_name])
+        lines.append(f"{table_name}({column_text})")
+    return "\n".join(lines)
+
+
 
 def build_schema_prompt() -> str:
+    dynamic_schema = _fetch_dynamic_schema()
+    schema_map = dynamic_schema if _is_valid_schema(dynamic_schema) else FALLBACK_SCHEMA
+    schema_block = _format_schema_block(schema_map)
+
     return (
         "AI-Powered Health Analytics Dashboard SQL generator.\n\n"
-        "Schema (4 tables):\n"
-        "population_stats(population_id, region, year, total_population, male_population, female_population)\n"
-        "disease_statistics(disease_id, disease_name, region, year, total_cases, total_deaths, recovery_rate)\n"
-        "hospital_resources(hospital_id, region, year, number_of_hospitals, available_beds, doctors_count, nurses_count)\n"
-        "vaccination_records(vaccine_id, vaccine_name, region, year, vaccinated_population, coverage_percentage)\n\n"
+        f"Schema (dynamic, current snapshot):\n{schema_block}\n\n"
 
         "Capabilities and filters: support region, year or year range, disease_name, and gender via male_population/female_population. Age groups are not available; if requested, ask for clarification.\n"
         "Use memory/context provided elsewhere only if explicitly given; otherwise do not assume prior filters.\n\n"
