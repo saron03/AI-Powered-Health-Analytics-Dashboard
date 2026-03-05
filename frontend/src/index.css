@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@layer base {
+
+  html,
+  body {
+    transition: background-color 0.4s ease, color 0.4s ease;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    @apply bg-slate-50 text-slate-900;
+  }
+
+  html.dark body {
+    @apply bg-[#0B0E14] text-[#F8FAFC];
+  }
+}
