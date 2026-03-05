@@ -105,11 +105,12 @@ def _build_graph():
     workflow.add_edge("intent_detector", "entity_extractor")
     workflow.add_edge("entity_extractor", "memory_resolver")
     workflow.add_edge("memory_resolver", "sql_generator")
-    # workflow.add_edge("sql_generator", "sql_reflector")
+    workflow.add_edge("sql_generator", "sql_reflector")
     workflow.add_conditional_edges(
-        "sql_generator",
+        "sql_reflector",
         _route_after_sql_reflector,
         {
+            "sql_generator": "sql_generator",
             "sql_validator": "sql_validator",
             "clarification_handler": "clarification_handler",
         },

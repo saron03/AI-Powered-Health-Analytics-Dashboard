@@ -302,7 +302,7 @@ def node_sql_generator(state: HealthGraphState) -> HealthGraphState:
     intent = str(state.get("intent", "clarification") or "clarification")
     entities = _as_dict(state.get("entities"))
     memory_context = _as_dict(state.get("memory_context"))
-    # retry_count = int(state.get("sql_retry_count", 0) or 0)
+    retry_count = int(state.get("sql_retry_count", 0) or 0)
     reflection_feedback = str(state.get("sql_reflection_feedback", "") or "")
 
     if intent == "clarification":
@@ -324,7 +324,7 @@ def node_sql_generator(state: HealthGraphState) -> HealthGraphState:
         f"Intent: {intent}\n"
         f"Entities: {json.dumps(entities)}\n"
         f"Memory context: {json.dumps(memory_context)}\n"
-        # f"SQL retry count: {retry_count}\n"
+        f"SQL retry count: {retry_count}\n"
         f"Reflection feedback: {reflection_feedback}"
     )
     parsed = safe_llm_json(
@@ -334,7 +334,7 @@ def node_sql_generator(state: HealthGraphState) -> HealthGraphState:
             "sql": "",
             "params": [],
             "clarification_needed": True,
-            "clarification_question": "Please provide disease, region, and year details.",
+            "clarification_question": "Please paraphrase your query with more specific details.",
         },
     )
 
@@ -363,7 +363,7 @@ def node_sql_generator(state: HealthGraphState) -> HealthGraphState:
     return {
         "sql": sql,
         "sql_params": params,
-        # "sql_retry_count": retry_count,
+        "sql_retry_count": retry_count,
         "retry_sql_generation": False,
         **_update_confidence(state, "sql_generator", DEFAULT_CONFIDENCE["sql_generator_success"]),
     }
