@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "http://localhost:8000",
+  baseURL: "https://health-data-analytics-7hm2.onrender.com",
   timeout: 30000,
 });
 
